@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 def cal_week(date):
     return datetime.date.weekday(datetime.datetime.strptime(date, '%Y%m%d'))
 
-files = glob.glob('../data/kospi200_weekly_option/*.csv')
+files = glob.glob('../data/kospi200_option/*.csv')
 
 print(files)
 
@@ -23,14 +23,14 @@ for file in files:
 
 print(volume_dict)
 
-week_volume = [0, 0, 0, 0, 0]
+week_volume = [0, 0, 0, 0, 0, 0, 0]
 
 for key, value in volume_dict.items():
     week_volume[cal_week(key)] += value
 
 print(week_volume)
 
-plt.bar(['Mon', 'Tue', 'Wed', 'Thu', 'Fri'], week_volume)
+plt.bar(['Mon', 'Tue', 'Wed', 'Thu', 'Fri','Sat', 'Sun'], week_volume)
 plt.show()
 
 volume_dict = {}
