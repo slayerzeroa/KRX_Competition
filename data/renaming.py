@@ -44,11 +44,9 @@ date_list = []
 result_f = open("../crawling/date_list.txt")
 for line in result_f:
     date_list.append(line[:-1])
-date_num_list= []
-for i in list(map(int, date_list)):
-    date_num_list.append(i+1)
 
-date_list = list(map(str, date_num_list))
+
+# print(len(date_list))
 
 files = glob.glob('./kospi200_option/*.csv')
 files.sort(key=os.path.getmtime)
