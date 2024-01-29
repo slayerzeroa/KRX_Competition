@@ -1,6 +1,7 @@
-# KRX_Competition
+# WVKOSPI
 
-YDM_230531
 For KRX Derivates Competition Project
 
-VKOSPI
+We made the Weekly VKOSPI
+
+using weekly KOSPI200 option data.
