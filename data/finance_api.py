@@ -6,19 +6,28 @@ import requests
 import json
 import datetime
 
-
+'''
+환경변수 설정
+'''
 load_dotenv()
 ECOS_API = os.getenv("ECOS_API")
+KRX_API = os.getenv("KRX_API")
 
 today = datetime.datetime.today().strftime('%Y%m%d')
 
 
+'''
+전처리 함수
+'''
 def json2df(response):
     contents = response.json()['StatisticSearch']['row']
     res_df = pd.DataFrame(contents)
     return res_df
 
 
+'''
+데이터 수집 함수
+'''
 def get_interest_df(start: str, end: str=today):
     '''
     start: 시작일자 (예시) 20210101
@@ -38,3 +47,16 @@ def get_interest_df(start: str, end: str=today):
         result_df = pd.concat([result_df, temp_df], axis=1)
     
     return result_df
+
+headers = {
+    'AUTH_KEY': KRX_API 
+}
+
+pd.set_option('display.max_columns', None)
+
+url = 'http://data-dbg.krx.co.kr/svc/apis/drv/opt_bydd_trd?basDd=20200414'
+response = requests.get(url=url, headers=headers)
+res_json = response.json()['OutBlock_1']
+print(len(res_json))
+# print(res_json)
+print(pd.DataFrame(res_json))
