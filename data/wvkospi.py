@@ -16,66 +16,13 @@ import requests as re
 from bs4 import BeautifulSoup
 
 from pykrx import stock
-# import finance_api
-
-
-'''
-금리 관련 함수
-'''
-# 금리 데이터 크롤링 함수
-# 수정 필요 (KRX에서 가져오는 걸로 바꾸기)
-def crawling_interest_rates():
-    interest_dict = {'IRR_CD91':[],
-                 'IRR_CALL':[]}
-    interest_labels = ['IRR_CD91','IRR_CALL']
-    
-    interest_df = pd.DataFrame()
-    for label in interest_labels:
-        date_list = []
-        try:
-            for i in range(1, 40):
-                url = re.get('http://finance.naver.com/marketindex/interestDailyQuote.nhn?marketindexCd=%s&page=%s'%(label,i))
-                url = url.content
-                soup = BeautifulSoup(url,'html.parser')
-
-                # 에러 테스트
-                try:
-                    test = soup.find('tbody').find('tr').find('td',{'class':'num'}).text
-                except:
-                    break
-                
-                # 리스트에 날짜 전처리 후 삽입
-                dates = soup.select('tr > td.date')
-                for date in dates:
-                    date_list.append(date.text.strip())
-
-                # 리스트에 금리 전처리 후 삽입
-                rates = soup.find('tbody').find_all('tr')
-                for rate in rates:
-                    interest_dict[label].append(rate.find('td',{'class':'num'}).text.strip())
-
-        except:
-            print('Error')
-
-        # DataFrame으로 만들기
-        temp_df = pd.DataFrame(interest_dict[label], index = date_list)
-        interest_df = pd.merge(interest_df, temp_df, how = 'outer', left_index = True, right_index = True)
-
-    interest_df.columns = ['CD91일', '콜금리']
-    interest_df.index = pd.to_datetime(interest_df.index)
-
-    return interest_df
-
-
-# # print(crawling_interest_rates())
-
-# print(finance_api.get_interest_df(start='20230714'))
+import finance_api
 
 
 # 금리 interpolation 함수
 def rf_inter(target_date:datetime ,near_date_diff, next_date_diff, interest_df):
     # 금리 interpolation
-    interest_data = interest_df[interest_df.index==target_date]
+    interest_data = interest_df[interest_df.index==target_date.strftime('%Y%m%d')]
     x = [1, 91]
     y = [float(interest_data['콜금리']), float(interest_data['CD91일'])]
 
@@ -177,24 +124,25 @@ def cutoff(option_data: pd.DataFrame, underlying):
 '''
 WVKOSPI 계산
 '''
-def get_underlying_data(t: datetime, ticker: str="1028"):
-    # 기초자산 가격
-    # kospi 200
-    underlying_df = stock.get_index_ohlcv_by_date(t, t, ticker)
-    underlying = (float(underlying_df.종가))
-    return underlying
 
 def get_option_data(t: datetime, near_date: datetime):
-    # 목요일 만기 위클리 옵션 데이터
-    option_data_t = stock.get_future_ohlcv(t, 'KRDRVOPWKI')
 
-    # 월요일 만기 위클리 옵션 데이터
-    option_data_m = stock.get_future_ohlcv(t, 'KRDRVOPWKM')
+    option_df = finance_api.get_weekly_option_df(t.strftime('%Y%m%d'), t.strftime('%Y%m%d'))
+
+    # 옵션 데이터 전처리
+    option_data_m = option_df[option_df['PROD_NM'].str.contains('월')]
+    option_data_t = option_df[option_df['PROD_NM'].str.contains('목')]
 
     option_data_t.dropna(axis = 1, how='all', inplace=True)
     option_data_t.dropna(axis = 0, how='any', inplace=True)
     option_data_m.dropna(axis = 1, how='all', inplace=True)
     option_data_m.dropna(axis = 0, how='any', inplace=True)
+
+    option_data_t = option_data_t[option_data_t['TDD_CLSPRC'] != '-']
+    option_data_m = option_data_m[option_data_m['TDD_CLSPRC'] != '-']
+
+    option_data_t['TDD_CLSPRC'] = option_data_t['TDD_CLSPRC'].astype(float)
+    option_data_m['TDD_CLSPRC'] = option_data_m['TDD_CLSPRC'].astype(float)
 
     if near_date.weekday() == 0:
         near_option_data = option_data_m
@@ -219,23 +167,23 @@ def preprocess_option(option_data: pd.DataFrame, option_type:str):
     if option_type == 'near':
         term_option = pd.DataFrame()
 
-        option_data['Strike_Price'] = option_data['종목명'].str[-5:]
-        option_data['Option_Type'] = option_data['종목명'].str[-14]
+        option_data['Strike_Price'] = option_data['ISU_NM'].str[-5:]
+        option_data['Option_Type'] = option_data['ISU_NM'].str[-14]
 
         term_data = []
         for i in option_data.Strike_Price:
             check = option_data[option_data.Strike_Price == i]
             if len(check) == 2:
                 input_data = []
-            # [Strike Price, Call Close, Put Close, Difference]
-            input_data.append(float(check['Strike_Price'].unique()))
-            input_data.append(check['종가'].to_list()[0])
-            input_data.append(check['종가'].to_list()[1])
-            input_data.append(abs(check['종가'].to_list()[0]-check['종가'].to_list()[1]))
-            if input_data not in term_data:
-                term_data.append(input_data)
-            else:
-                pass
+                # [Strike Price, Call Close, Put Close, Difference]
+                input_data.append(float(check['Strike_Price'].unique()))
+                input_data.append(check['TDD_CLSPRC'].to_list()[0])
+                input_data.append(check['TDD_CLSPRC'].to_list()[1])
+                input_data.append(abs(check['TDD_CLSPRC'].to_list()[0]-check['TDD_CLSPRC'].to_list()[1]))
+                if input_data not in term_data:
+                    term_data.append(input_data)
+                else:
+                    pass
 
         term_option = pd.concat([term_option, pd.DataFrame(term_data)])
         term_option.columns = ['Strike_Price', 'Call', 'Put', 'Difference']
@@ -246,13 +194,13 @@ def preprocess_option(option_data: pd.DataFrame, option_type:str):
     elif option_type == 'next':
         term_option = pd.DataFrame()
 
-        option_data['Strike_Price'] = option_data['종목명'].str[-5:]
-        option_data['Option_Type'] = option_data['종목명'].str[-14]
+        option_data['Strike_Price'] = option_data['ISU_NM'].str[-5:]
+        option_data['Option_Type'] = option_data['ISU_NM'].str[-14]
 
         # 월, 목 옵션 동시 존재 에러 해결
         # 예시) 월요일에는 월요일 만기 옵션이 두 종류 존재 (오늘 만기, 다음주 만기)
         # 다음주 만기 옵션 데이터만 남기기 (롤오버)
-        option_data['Select'] = (option_data['종목명'].str[-13:-8] + option_data['종목명'].str[-7:-6]).astype(int)
+        option_data['Select'] = (option_data['ISU_NM'].str[-13:-8] + option_data['ISU_NM'].str[-7:-6]).astype(int)
         option_data = option_data[option_data['Select'] == option_data['Select'].max()]
 
         next_data = []
@@ -260,15 +208,15 @@ def preprocess_option(option_data: pd.DataFrame, option_type:str):
             check = option_data[option_data.Strike_Price == i]
             if len(check) == 2:
                 input_data = []
-            # [Strike Price, Call Close, Put Close, Difference]
-            input_data.append(float(check['Strike_Price'].unique()))
-            input_data.append(check['종가'].to_list()[0])
-            input_data.append(check['종가'].to_list()[1])
-            input_data.append(abs(check['종가'].to_list()[0]-check['종가'].to_list()[1]))
-            if input_data not in next_data:
-                next_data.append(input_data)
-            else:
-                pass
+                # [Strike Price, Call Close, Put Close, Difference]
+                input_data.append(float(check['Strike_Price'].unique()))
+                input_data.append(check['TDD_CLSPRC'].to_list()[0])
+                input_data.append(check['TDD_CLSPRC'].to_list()[1])
+                input_data.append(abs(check['TDD_CLSPRC'].to_list()[0]-check['TDD_CLSPRC'].to_list()[1]))
+                if input_data not in next_data:
+                    next_data.append(input_data)
+                else:
+                    pass
 
         term_option = pd.concat([term_option, pd.DataFrame(next_data)])
         term_option.columns = ['Strike_Price', 'Call', 'Put', 'Difference']
@@ -305,10 +253,10 @@ def vix_formula(near_term_option, next_term_option, near_option_data, next_optio
     near_put = cutoff(near_option_data_put, underlying)
     next_call = cutoff(next_option_data_call, underlying)
     next_put = cutoff(next_option_data_put, underlying)
-    near_call['Contribution_by_Strike'] = (2.5/(near_call['Strike_Price'].astype(float).pow(2))) * math.exp(rates[0] * T[0]) * near_call['종가']
-    near_put['Contribution_by_Strike'] = (2.5/(near_put['Strike_Price'].astype(float).pow(2))) * math.exp(rates[0] * T[0]) * near_put['종가']
-    next_call['Contribution_by_Strike'] = (2.5/(next_call['Strike_Price'].astype(float).pow(2))) * math.exp(rates[1] * T[1]) * next_call['종가']
-    next_put['Contribution_by_Strike'] = (2.5/(next_put['Strike_Price'].astype(float).pow(2))) * math.exp(rates[1] * T[1]) * next_put['종가']
+    near_call['Contribution_by_Strike'] = (2.5/(near_call['Strike_Price'].astype(float).pow(2))) * math.exp(rates[0] * T[0]) * near_call['TDD_CLSPRC']
+    near_put['Contribution_by_Strike'] = (2.5/(near_put['Strike_Price'].astype(float).pow(2))) * math.exp(rates[0] * T[0]) * near_put['TDD_CLSPRC']
+    next_call['Contribution_by_Strike'] = (2.5/(next_call['Strike_Price'].astype(float).pow(2))) * math.exp(rates[1] * T[1]) * next_call['TDD_CLSPRC']
+    next_put['Contribution_by_Strike'] = (2.5/(next_put['Strike_Price'].astype(float).pow(2))) * math.exp(rates[1] * T[1]) * next_put['TDD_CLSPRC']
     near = pd.concat([near_call, near_put])
     next = pd.concat([next_call, next_put])
     sigmasquared_1 = (2/T[0])*near['Contribution_by_Strike'].sum() - (1/T[0])*((F1/K_0_1)-1)**2
@@ -318,14 +266,11 @@ def vix_formula(near_term_option, next_term_option, near_option_data, next_optio
     VIX = 100 * np.sqrt((T[0]*sigmasquared_1*((Nt[1]-N30)/(Nt[1]-Nt[0]))+T[1]*sigmasquared_2*((N30-Nt[0])/(Nt[1]-Nt[0])))*(N365/N30))
     return VIX
 
+
 def cal_wvkospi(t: datetime, rate_df: pd.DataFrame):
-
-    underlying = get_underlying_data(t, ticker="1028")
-
+    underlying = (finance_api.get_kospi_df(t.strftime('%Y%m%d'), t.strftime('%Y%m%d')))['CLSPRC_IDX'].astype(float).values[0]
     near_date, next_date, near_date_diff, next_date_diff = get_date_data(t)
-
     rates = rf_inter(t, near_date_diff, next_date_diff, rate_df)
-
     near_option_data, next_option_data = get_option_data(t, near_date=near_date)
 
     near_term_option = preprocess_option(near_option_data, option_type='near')
@@ -334,3 +279,10 @@ def cal_wvkospi(t: datetime, rate_df: pd.DataFrame):
     VIX = vix_formula(near_term_option, next_term_option, near_option_data, next_option_data, underlying, rates, near_date_diff, next_date_diff)
 
     return VIX
+
+
+
+target_date = datetime(2023, 8, 1).date()
+target_date_str = target_date.strftime('%Y%m%d')
+rate_df = finance_api.get_interest_df(start=target_date_str, end=target_date_str).astype(float)
+print(cal_wvkospi(target_date, rate_df))
