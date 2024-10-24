@@ -16,7 +16,7 @@ import requests as re
 from bs4 import BeautifulSoup
 
 from pykrx import stock
-import finance_api
+# import finance_api
 
 
 '''
@@ -67,9 +67,9 @@ def crawling_interest_rates():
     return interest_df
 
 
-# print(crawling_interest_rates())
+# # print(crawling_interest_rates())
 
-print(finance_api.get_interest_df(start='20230714'))
+# print(finance_api.get_interest_df(start='20230714'))
 
 
 # 금리 interpolation 함수
