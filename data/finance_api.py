@@ -84,6 +84,8 @@ def get_interest_df(start: str, end: str=today):
         temp_df = temp_df.set_index('TIME')
         temp_df.columns = [key]
         result_df = pd.concat([result_df, temp_df], axis=1)
+    result_df = result_df.astype(float)
+    result_df = result_df.fillna(result_df.mean())
     
     return result_df
 
@@ -141,11 +143,6 @@ def get_vkospi_spot_df(start: str='20230801', end: str=today):
     result = result[['BAS_DD', 'SPOT_PRC']]
 
     return result
-
-# # pd.set_option('display.max_rows', None)
-# pd.set_option('display.max_columns', None)
-# print(get_vkospi_spot_df(end='20230803'))
-
 
 
 

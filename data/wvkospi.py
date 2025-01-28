@@ -74,9 +74,8 @@ def date_diff(now, future):
 # 금리 interpolation 함수
 def rf_inter(target_date:datetime ,near_date_diff, next_date_diff, interest_df):
     # 금리 interpolation
-    interest_data = interest_df[interest_df.index==target_date.strftime('%Y%m%d')]
     x = [1, 91]
-    y = [float(interest_data['콜금리'].iloc[0]), float(interest_data['CD91일'].iloc[0])]
+    y = [float(interest_df['콜금리']), float(interest_df['CD91일'])]
 
     spline_func = interpolate.CubicSpline(x, y)
 
@@ -218,9 +217,6 @@ def get_date_data(t: datetime):
     return near_date, next_date, near_date_diff, next_date_diff
 
 
-    
-
-
 '''
 계산 함수
 '''
@@ -273,14 +269,13 @@ def vix_formula(near_term_option, next_term_option, near_option_data, next_optio
 
 
 def cal_wvkospi(t: datetime, underlying, rate):
-    underlying = (finance_api.get_kospi_df(t.strftime('%Y%m%d'), t.strftime('%Y%m%d')))['CLSPRC_IDX'].astype(float).values[0]
     near_date, next_date, near_date_diff, next_date_diff = get_date_data(t)
     rates = rf_inter(t, near_date_diff, next_date_diff, rate)
     near_option_data, next_option_data = get_option_data(t, near_date=near_date)
 
     near_term_option = preprocess_option(near_option_data, option_type='near')
     next_term_option = preprocess_option(next_option_data, option_type='next')
-    
+
     VIX = vix_formula(near_term_option, next_term_option, near_option_data, next_option_data, underlying, rates, near_date_diff, next_date_diff)
 
     return VIX
@@ -289,11 +284,18 @@ def cal_wvkospi(t: datetime, underlying, rate):
 
 def get_wvkospi(t: datetime):
     underlying = (finance_api.get_kospi_df(t.strftime('%Y%m%d'), t.strftime('%Y%m%d')))['CLSPRC_IDX'].astype(float).values[0]
-    rate = finance_api.get_interest_df(start=t.strftime('%Y%m%d'), end=t.strftime('%Y%m%d')).astype(float)
+    rate = (finance_api.get_interest_df(start=(t-timedelta(days=5)).strftime('%Y%m%d'), end=t.strftime('%Y%m%d')).astype(float)).iloc[-1, :]
     wvkospi = cal_wvkospi(t, underlying, rate)
 
     return underlying, wvkospi
 
+
+
+### VKOSPI SPOT 가져오기
+def get_vkospi(t: datetime):
+    t = t.strftime("%Y%m%d")
+    vkospi = float((finance_api.get_vkospi_spot_df(start=t, end=t))['SPOT_PRC'])
+    return vkospi
 
 # target_date = datetime(2024, 10, 24).date()
 # # target_date_str = target_date.strftime('%Y%m%d')
